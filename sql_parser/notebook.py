@@ -13,8 +13,6 @@ START_EXPR = "DATEADD('day', -7, CURRENT_TIMESTAMP())"
 END_EXPR = "CURRENT_TIMESTAMP()"
 MAX_ROWS = 5000
 QUERY_TYPES = ("SELECT","CREATE_VIEW","CREATE OR REPLACE VIEW","INSERT","MERGE","UPDATE")
-
-# Catalog view holding column metadata for resolving column references
 CATALOG_TABLE = "PROD_110575_ICDW_DB.PUBLIC_GLOBAL.CONSTELLATION_VIEW_COLUMN_WITH_PCI_POLICIES"
 
 
@@ -66,5 +64,4 @@ def parse_query_history(session: Session,
 
 
 def main(session: Session):
-    """Snowflake Python Notebook entry point."""
     return parse_query_history(session)

@@ -605,16 +605,17 @@ class SnowflakeQueryParser:
 # ---------------- Notebook helper ----------------
 # Customer-specific table storing query history rows
 QUERY_HISTORY_TABLE = "##############"
+
+QUERY_HISTORY_TABLE = "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
+
 START_EXPR = "DATEADD('day', -7, CURRENT_TIMESTAMP())"
 END_EXPR = "CURRENT_TIMESTAMP()"
 MAX_ROWS = 5000
 QUERY_TYPES = ("SELECT","CREATE_VIEW","CREATE OR REPLACE VIEW","INSERT","MERGE","UPDATE")
 
-# Catalog view holding column metadata for resolving column references
-CATALOG_TABLE = "#######################
 
 def parse_query_history(session: Session,
-                        catalog_table: str = CATALOG_TABLE,
+                        catalog_table: str,
                         query_history_table: str = QUERY_HISTORY_TABLE,
                         start_expr: str = START_EXPR,
                         end_expr: str = END_EXPR,
@@ -655,3 +656,4 @@ def parse_query_history(session: Session,
 def main(session: Session):
     """Snowflake Python Notebook entry point."""
     return parse_query_history(session)
+
