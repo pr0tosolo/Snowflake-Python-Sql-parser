@@ -604,14 +604,14 @@ class SnowflakeQueryParser:
 
 # ---------------- Notebook helper ----------------
 # Customer-specific table storing query history rows
-QUERY_HISTORY_TABLE = "USER_QUERY_HISTORY"
+QUERY_HISTORY_TABLE = "##############"
 START_EXPR = "DATEADD('day', -7, CURRENT_TIMESTAMP())"
 END_EXPR = "CURRENT_TIMESTAMP()"
 MAX_ROWS = 5000
 QUERY_TYPES = ("SELECT","CREATE_VIEW","CREATE OR REPLACE VIEW","INSERT","MERGE","UPDATE")
 
 # Catalog view holding column metadata for resolving column references
-CATALOG_TABLE = "PROD_110575_ICDW_DB.PUBLIC_GLOBAL.CONSTELLATION_VIEW_COLUMN_WITH_PCI_POLICIES"
+CATALOG_TABLE = "#######################
 
 def parse_query_history(session: Session,
                         catalog_table: str = CATALOG_TABLE,
