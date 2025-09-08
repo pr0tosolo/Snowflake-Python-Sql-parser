@@ -666,3 +666,26 @@ def parse_query_history(session: Session,
         ))
 
     return session.create_dataframe(rows, schema=schema)
+
+
+def main(session: Session,
+         catalog_table: str,
+         query_history_table: str = QUERY_HISTORY_TABLE,
+         start_expr: str = START_EXPR,
+         end_expr: str = END_EXPR,
+         max_rows: int = MAX_ROWS,
+         query_types: Tuple[str, ...] = QUERY_TYPES):
+    """Snowflake stored procedure entry point.
+
+    This wrapper allows the parser to be invoked directly in Snowflake by
+    returning the same DataFrame produced by ``parse_query_history``.
+    """
+    return parse_query_history(
+        session,
+        catalog_table,
+        query_history_table=query_history_table,
+        start_expr=start_expr,
+        end_expr=end_expr,
+        max_rows=max_rows,
+        query_types=query_types,
+    )
