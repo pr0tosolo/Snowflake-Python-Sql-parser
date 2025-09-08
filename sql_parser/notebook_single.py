@@ -5,7 +5,7 @@ package. It exposes:
   - load_catalog(session, table)
   - SnowflakeQueryParser(catalog_maps)
   - parse_query_history(session, catalog_table, ...)
-which returns a Snowpark DataFrame with joins, filters, and canonical SQL.
+which returns a Snowpark DataFrame with joins, filters, canonical SQL, and CTEs.
 """
 
 from __future__ import annotations
@@ -165,6 +165,21 @@ def build_alias_map_and_join_scope(parsed: sxe.Expression) -> Tuple[Dict[str, st
             seen.add(v)
 
     return amap, scope_unique
+
+# ---------------- CTE extraction ----------------
+def extract_ctes(parsed: sxe.Expression) -> List[Dict[str, str]]:
+    ctes: List[Dict[str, str]] = []
+    with_ = parsed.args.get("with")
+    if with_ and getattr(with_, "expressions", None):
+        for cte in with_.expressions:
+            if isinstance(cte, sxe.CTE) and cte.alias:
+                csql = canonicalize_sql(cte.this)
+                try:
+                    sqlglot.parse_one(csql, read="snowflake")
+                except Exception:
+                    continue
+                ctes.append({"name": cte.alias, "sql": csql})
+    return ctes
 
 # ---------------- Placeholder typing ----------------
 def _name_based_hint(col_name: str, rules: List[Tuple[re.Pattern, str]]) -> Optional[str]:
@@ -345,6 +360,9 @@ def extract_from_ast(parsed: sxe.Expression,
                      name_type_rules: List[Tuple[re.Pattern, str]]) -> Dict[str, Any]:
     res: Dict[str, Any] = {"branch": branch_id}
 
+    cte_items = extract_ctes(parsed)
+    res["ctes"] = [{"branch": branch_id, "name": c["name"], "sql": c["sql"]} for c in cte_items] or None
+
     alias_map, join_scope = build_alias_map_and_join_scope(parsed)
 
     # FROM list
@@ -468,7 +486,7 @@ def extract_query_objects(sql_text: str,
         accum = {
             "from": [], "joins": [], "select_expressions": [],
             "where": [], "having": [], "qualify": [],
-            "group_by": [], "order_by": [], "limit": []
+            "group_by": [], "order_by": [], "limit": [], "ctes": []
         }
         for i, b in enumerate(branches):
             bx = extract_from_ast(b, catalog_maps, i, name_type_rules)
@@ -576,7 +594,7 @@ def build_canonical_sql_from_extracted(extracted: Dict[str, Any]) -> str:
 
 # ---------------- High level parser class ----------------
 class SnowflakeQueryParser:
-    """Parse SQL text into join/filter details and canonical SQL."""
+    """Parse SQL text into join/filter details, canonical SQL, and CTEs."""
     def __init__(self, catalog_maps: Dict[str, set],
                  name_type_rules: Optional[List[Tuple[re.Pattern, str]]] = None):
         self.catalog_maps = catalog_maps
@@ -585,7 +603,7 @@ class SnowflakeQueryParser:
     def parse(self, sql_text: str) -> Dict[str, Any]:
         ex = extract_query_objects(sql_text, self.catalog_maps, self.name_type_rules)
         if not ex:
-            return {"joins": [], "filters": [], "canonical_sql": ""}
+            return {"joins": [], "filters": [], "canonical_sql": "", "ctes": []}
         canonical_sql = build_canonical_sql_from_extracted(ex)
         canonical_sql = mask_literals(canonical_sql)
         canonical_sql = re.sub(r"<(?!UNKNOWN|AMBIG:[^>]+)[^>]+>", "<???>", canonical_sql)
@@ -600,7 +618,8 @@ class SnowflakeQueryParser:
                 "conditions": conds,
             })
         filters = [re.sub(r"<(?!UNKNOWN|AMBIG:[^>]+)[^>]+>", "<???>", w.get("canon")) for w in (ex.get("where") or []) if w.get("canon")]
-        return {"joins": joins, "filters": filters, "canonical_sql": canonical_sql}
+        ctes = [{"name": c.get("name"), "sql": mask_literals(c.get("sql", ""))} for c in (ex.get("ctes") or [])]
+        return {"joins": joins, "filters": filters, "canonical_sql": canonical_sql, "ctes": ctes}
 
 # ---------------- Notebook helper ----------------
 QUERY_HISTORY_TABLE = "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
@@ -616,7 +635,7 @@ def parse_query_history(session: Session,
                         end_expr: str = END_EXPR,
                         max_rows: int = MAX_ROWS,
                         query_types: Tuple[str, ...] = QUERY_TYPES):
-    """Parse recent query history and return a Snowpark DataFrame with joins, filters, and canonical SQL."""
+    """Parse recent query history and return a Snowpark DataFrame with joins, filters, CTEs, and canonical SQL."""
     catalog_maps = load_catalog(session, catalog_table)
     parser = SnowflakeQueryParser(catalog_maps)
 
@@ -630,7 +649,7 @@ def parse_query_history(session: Session,
         df = df.limit(max_rows)
 
     rows: List[Tuple] = []
-    schema = ["QUERY_ID", "JOINS", "FILTERS", "CANONICAL_SQL"]
+    schema = ["QUERY_ID", "JOINS", "FILTERS", "CTES", "CANONICAL_SQL"]
 
     for r in df.to_local_iterator():
         qid = r["QUERY_ID"]
@@ -642,7 +661,31 @@ def parse_query_history(session: Session,
             str(qid),
             json.dumps(parsed["joins"], ensure_ascii=False),
             json.dumps(parsed["filters"], ensure_ascii=False),
+            json.dumps(parsed["ctes"], ensure_ascii=False),
             parsed["canonical_sql"],
         ))
 
     return session.create_dataframe(rows, schema=schema)
+
+
+def main(session: Session,
+         catalog_table: str,
+         query_history_table: str = QUERY_HISTORY_TABLE,
+         start_expr: str = START_EXPR,
+         end_expr: str = END_EXPR,
+         max_rows: int = MAX_ROWS,
+         query_types: Tuple[str, ...] = QUERY_TYPES):
+    """Snowflake stored procedure entry point.
+
+    This wrapper allows the parser to be invoked directly in Snowflake by
+    returning the same DataFrame produced by ``parse_query_history``.
+    """
+    return parse_query_history(
+        session,
+        catalog_table,
+        query_history_table=query_history_table,
+        start_expr=start_expr,
+        end_expr=end_expr,
+        max_rows=max_rows,
+        query_types=query_types,
+    )
