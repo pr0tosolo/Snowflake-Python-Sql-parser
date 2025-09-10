@@ -622,6 +622,7 @@ class SnowflakeQueryParser:
         return {"joins": joins, "filters": filters, "canonical_sql": canonical_sql, "ctes": ctes}
 
 # ---------------- Notebook helper ----------------
+CATALOG_TABLE = "YOUR_DB.YOUR_SCHEMA.CATALOG_VIEW"
 QUERY_HISTORY_TABLE = "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
 START_EXPR = "DATEADD('day', -7, CURRENT_TIMESTAMP())"
 END_EXPR = "CURRENT_TIMESTAMP()"
@@ -629,7 +630,7 @@ MAX_ROWS = 5000
 QUERY_TYPES = ("SELECT","CREATE_VIEW","CREATE OR REPLACE VIEW","INSERT","MERGE","UPDATE")
 
 def parse_query_history(session: Session,
-                        catalog_table: str,
+                        catalog_table: str = CATALOG_TABLE,
                         query_history_table: str = QUERY_HISTORY_TABLE,
                         start_expr: str = START_EXPR,
                         end_expr: str = END_EXPR,
@@ -668,24 +669,11 @@ def parse_query_history(session: Session,
     return session.create_dataframe(rows, schema=schema)
 
 
-def main(session: Session,
-         catalog_table: str,
-         query_history_table: str = QUERY_HISTORY_TABLE,
-         start_expr: str = START_EXPR,
-         end_expr: str = END_EXPR,
-         max_rows: int = MAX_ROWS,
-         query_types: Tuple[str, ...] = QUERY_TYPES):
+def main(session: Session):
     """Snowflake stored procedure entry point.
 
-    This wrapper allows the parser to be invoked directly in Snowflake by
-    returning the same DataFrame produced by ``parse_query_history``.
+    Snowflake Python notebooks require ``main`` to accept only a ``Session``
+    argument. Additional configuration for the parser can be adjusted by
+    editing the module level constants above.
     """
-    return parse_query_history(
-        session,
-        catalog_table,
-        query_history_table=query_history_table,
-        start_expr=start_expr,
-        end_expr=end_expr,
-        max_rows=max_rows,
-        query_types=query_types,
-    )
+    return parse_query_history(session)
